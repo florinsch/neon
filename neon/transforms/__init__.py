@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------------
-# Copyright 2014 Nervana Systems Inc.
+# Copyright 2014-2016 Nervana Systems Inc.
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ----------------------------------------------------------------------------
-
-# import shortcuts
-from neon.transforms.cross_entropy import CrossEntropy  # noqa
-from neon.transforms.linear import Linear  # noqa
-from neon.transforms.logistic import Logistic  # noqa
-from neon.transforms.rectified import RectLin, RectLeaky  # noqa
-from neon.transforms.softmax import Softmax  # noqa
-from neon.transforms.sum_squared import SumSquaredDiffs  # noqa
-from neon.transforms.tanh import Tanh  # noqa
-from neon.transforms.xcov import XCovariance  # noqa
+from neon.transforms.activation import (Identity, Explin, Rectlin, Rectlinclip,
+                                        Sign, Softmax, Tanh, Logistic, Normalizer,
+                                        PixelwiseSoftmax)
+from neon.transforms.cost import (CrossEntropyBinary, CrossEntropyMulti,
+                                  SumSquared, MeanSquared, LogLoss,
+                                  Misclassification, TopKMisclassification,
+                                  Accuracy, PrecisionRecall, SmoothL1Loss,
+                                  SquareHingeLoss, ObjectDetection)

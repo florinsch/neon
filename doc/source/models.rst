@@ -1,5 +1,5 @@
 .. ---------------------------------------------------------------------------
-.. Copyright 2014 Nervana Systems Inc.
+.. Copyright 2015 Nervana Systems Inc.
 .. Licensed under the Apache License, Version 2.0 (the "License");
 .. you may not use this file except in compliance with the License.
 .. You may obtain a copy of the License at
@@ -16,100 +16,155 @@
 Models
 ======
 
+The :py:class:`Model<neon.models.model>` class represents the network architecture,
+either provided as a layer container, a list of layers, or loaded from a
+previously saved model file.
 
-Available Models
-----------------
-
-.. autosummary::
-   :toctree: generated/
-
-   neon.models.mlp.MLP
-   neon.models.autoencoder.Autoencoder
-   neon.models.rbm.RBM
-   neon.models.dbn.DBN
-   neon.models.rnn.RNN
-   neon.models.balance.Balance
-
-.. _extending_model:
-
-Adding a new type of Model
---------------------------
-
-#. Create a new subclass of :class:`neon.models.model.Model`
-#. At a minimum implement :func:`neon.models.model.Model.fit` to learn
-   parameters from a training dataset
-#. Write :func:`neon.models.model.Model.predict` to apply learned parameters
-   to make predictions about another dataset.
-
-.. _saving_models:
-
-Saving models
--------------
-
-Models can be saved by including the ``serialized_path`` option in the yaml
-file, and passing a string specifying the path and file name of the saved
-model.  Models are saved as serialized python dictionaries.
-
-To periodically save snapshots of the model during training (useful to
-checkpoint long running jobs), use the ``serialize_schedule`` parameter.  The
-schedule can either be a list of ints if specific epochs are to be saved or a
-single int if saving is meant to occur at a constant interval.  As an example:
-
-.. code-block:: yaml
-
-    model: !obj:models.MLP {
-      num_epochs: 100,
-      serialized_path: './my_mlp_model.prm',
-      serialize_schedule: [25, 50, 70, 90],
-
-      # other parameters ...
-
-The example above would result in the current model state being save to disk in
-the file ``my_mlp_model.prm`` at the end of training the 25th, 50th, 70th, and
-90th epochs respectively.  The existing file will be overwritten at each step.
-Alternatively, the example:
-
-.. code-block:: yaml
-
-    model: !obj:models.MLP {
-      num_epochs: 100,
-      serialized_path: './my_mlp_model.prm',
-      serialize_schedule: 10,
-
-      # other parameters ...
-
-would result in the model state being snapshot to disk in ``my_mlp_model.prm``
-after each of the 10th, 20th, 30th, 40th, ... epochs of training.
-
-
-Loading saved models
+Lifecycle of a model
 --------------------
 
-As an alternative to training models from scratch each time, it is beneficial
-to be able to save and later restore a given model's state so that training can
-resume from that given point in time.  See :ref:`saving_models` to learn how to
-write saved model state to disk.
+Instantiation
+~~~~~~~~~~~~~
 
-Armed with a particular saved model file, we can restore and utilize it in the
-training process by setting either the ``deserialized_path`` or
-``serialized_path`` model parameters to point at this file.
-``serialized_path`` is lower priority and will only be examined if
-``deserialized_path`` does not exist.
+We create a model by passing either a list of layers or a container. If
+a list of layers is provided, the model will wrap the layers in a
+:py:class:`Sequential<neon.layers.container.Sequential>` container. Combinations of lists and
+containers is not supported. When a model is instantiated, the layer
+shapes are not determined until a training set is provided.
 
-Restoring a model in this way is typically useful for generating predictions
-but if you'd like to train your model further from this loaded state, you'll
-also likely need to increase the ``num_epochs`` parameter.  Since this is
-saved as part of the model's state, the model will not train further unless
-this is overridden.  Here's an example showing how to take a saved model
-called ``my_mlp_model.prm`` trained for 10 epochs, load it and train it for a
-further 90 epochs from that state:
+Training
+~~~~~~~~
 
-.. code-block:: yaml
+To train, call the ``model.fit()`` function and provide
 
-    model: !obj:models.MLP {
-      overwrite_list: ['num_epochs'],
-      num_epochs: 100,
-      deserialized_path: './my_mlp_model.prm',
+.. csv-table::
+    :header: Argument, Description
+    :widths: 20, 50
+    :delim: |
 
-      # other parameters ...
+    dataset | An iterable of minibatches of the dataset (e.g. :py:class:`ArrayIterator<neon.data.dataiterator.ArrayIterator>`).
+    cost | Cost function to apply to the output of the last layer (:py:class:`neon.transforms.Costs<neon.transforms.cost.Cost>`)
+    optimizer | The learning rule for updating the model parameters (:py:mod:`neon.optimizers`)
+    num_epochs | Number of iterations over the dataset
+    callbacks | Functions to run at the start/end of each epoch/minibatch (:py:mod:`neon.callbacks`)
 
+
+
+When ``model.fit()`` is called and training data provided, the model is
+first initialized with ``model.initialize()``. During initialization,
+the dataset is propagated through the layers to call each layer's
+``configure()`` method to set the input and output shapes. Then, the
+appropriate buffers are allocated with each layer's ``allocate()``
+method. Note that a model object can only be initialized once.
+
+During training, the model iterates through mini-batches of the dataset,
+calling the forward and backward propagation functions to compute the
+gradients according to the provided ``cost`` and update the weights
+based on the ``optimizer``. The length of training is controlled by the
+``num_epochs`` argument. Callbacks can also be configured to end training
+when certain exit conditions are met.
+
+.. code-block:: python
+
+    # Pseudo-code of training procedure in neon.models.model
+    for (x_train, y_train) in dataset:
+
+        # fprop through the layers
+        x_train = self.fprop(x_train)
+
+        # get deltas in the cost
+        delta = self.cost.get_errors(x_train, y_train)
+
+        # backprop the deltas through the layers
+        self.bprop(delta)
+
+        # update the weights
+        self.optimizer.optimize(self.layer, epoch=epoch)
+
+Evaluation
+~~~~~~~~~~
+
+When training is completed, the model can be evaluated against a
+provided Metric and dataset with the ``model.eval(dataset, metric)``
+method. This method iterates over the provided dataset, and calls
+``fprop`` to obtain the model output. For efficient inference, the model
+calls ``fprop`` with ``inference=True`` argument to avoid unneeded
+memory and computation.
+
+To directly obtain the model outputs for a specific dataset, the
+``model.get_outputs(dataset)`` method can also be called, which returns
+a numpy array with the final layer output for each example in the
+dataset.
+
+Inspecting the model
+--------------------
+
+The easiest way of inspecting a model's weights is by accessing the
+layer parameters directly. For example, to get the Tensor for the first
+layer in a model, call:
+
+.. code-block:: python
+
+    mlp.layers.layers[0].W
+
+To get the entire model configuration and weights, call
+
+.. code-block:: python
+
+    pdict = model.get_description(get_weights=True)
+
+We can now inspect each layer by obtaining a list of dicts, one for each
+layer:
+
+.. code-block:: python
+
+    ldict = pdict['model']['config']['layers']
+
+Each layer dict has three keys:
+
+* ``'config'``: arguments passed to the constructor (e.g., name, weight initializer)
+* ``'type'``: layer class (e.g. ``neon.layers.layer.Linear``)
+* ``'params'``: dict of layer parameters (e.g. ``'W'`` for the weight matrix)
+
+For example, we can obtain a numpy array with the weight matrix of the
+first layer by calling
+
+.. code-block:: python
+
+    W = ldict[0]['params']['W']
+
+    # or more directly,
+    W = pdict['model']['config']['layers'][0]['params']['W']
+
+Note that this copies all the data from the GPU device to host to
+produce the numpy array values.
+
+Loading and saving models
+-------------------------
+
+The entire model (layers, per layer weights, epochs run, optimizer
+states, etc.) can be saved and loaded from disk with neon's
+serialization feature.
+
+There are two ways to save a model. One can call, after fitting is
+complete:
+
+.. code-block:: python
+
+    model.save_params("mnist_model.prm")
+
+This will save the model objects into "save\_path.prm". Alternatively,
+the command line argument ``--serialize n`` will save the model every
+``n`` epochs:
+
+.. code-block:: python
+
+    python mnist_mlp.py --save_path mnist_model.prm --serialize 1 -e 3 \
+
+Then, the model will be saved every epoch of training.
+
+To load the model, pass the file to the ``model`` constructor:
+
+.. code-block:: python
+
+    new_model = Model("mnist_model.prm")

@@ -1,5 +1,5 @@
 .. ---------------------------------------------------------------------------
-.. Copyright 2014 Nervana Systems Inc.
+.. Copyright 2015 Nervana Systems Inc.
 .. Licensed under the Apache License, Version 2.0 (the "License");
 .. you may not use this file except in compliance with the License.
 .. You may obtain a copy of the License at
@@ -12,213 +12,305 @@
 .. See the License for the specific language governing permissions and
 .. limitations under the License.
 .. ---------------------------------------------------------------------------
+
 .. currentmodule:: neon
 
-.. |Tensor| replace:: :py:class:`~neon.backends.backend.Tensor`
-.. |Backend| replace:: :py:class:`~neon.backends.backend.Backend`
+.. |Tensor| replace:: :py:meth:`~neon.backends.backend.Tensor`
+.. |Backend| replace:: :py:meth:`~neon.backends.backend.Backend`
 
-******************************
-ML OPerational Layer (MOP) API 
-******************************
-
-We expose the following API which we refer to as our ML operational layer (aka
-MOP layer). It currently consists of the functions defined in the following two
-interface classes, which we detail further on the rest of this page:
-
-.. autosummary::
-   :toctree: generated/
-
-   neon.backends.backend.Tensor
-   neon.backends.backend.Backend
-
-Basic Data Structure
-====================
-
-The |Tensor| class is used to represent an arbitrary dimensional array in which
-each element is stored using a consistent underlying type.
-
-We have the ability to instantiate and copy instances of this data
-structure, as well as initialize its elements, reshape its dimensions, and 
-access metadata.
-
-|Tensor| Creation
------------------
-
-.. autosummary::
-
-   neon.backends.backend.Backend.empty
-   neon.backends.backend.Backend.array
-   neon.backends.backend.Backend.zeros
-   neon.backends.backend.Backend.ones
-   neon.backends.backend.Backend.copy
-   neon.backends.backend.Backend.uniform
-   neon.backends.backend.Backend.normal
-
-|Tensor| Manipulation
----------------------
-
-.. autosummary::
-
-   neon.backends.backend.Tensor.asnumpyarray
-   neon.backends.backend.Tensor.take
-   neon.backends.backend.Tensor.__getitem__
-   neon.backends.backend.Tensor.__setitem__
-   neon.backends.backend.Tensor.fill
-   neon.backends.backend.Tensor.transpose
-   neon.backends.backend.Tensor.reshape
-   neon.backends.backend.Tensor.repeat
-   neon.backends.backend.Tensor.free
-
-|Tensor| Attributes
--------------------
-
-.. autosummary::
-
-   neon.backends.backend.Tensor.shape
-   neon.backends.backend.Tensor.dtype
-   neon.backends.backend.Tensor.raw
-
-Arithmetic Operation Support
-============================
-
-Unary and binary arithmetic operations can be performed on |Tensor| objects via
-appropriate |Backend| calls.  In all cases it is up to the user to pre-allocate
-correctly sized output to house the result.
-
-Element-wise Binary Operations
-------------------------------
-.. autosummary::
-
-   neon.backends.backend.Backend.add
-   neon.backends.backend.Backend.subtract
-   neon.backends.backend.Backend.multiply
-   neon.backends.backend.Backend.divide
-
-Element-wise Unary Transcendental Functions
--------------------------------------------
-.. autosummary::
-
-   neon.backends.backend.Backend.log
-   neon.backends.backend.Backend.exp
-   neon.backends.backend.Backend.power
-
-Matrix Algebra Operations
--------------------------
-.. autosummary::
-
-   neon.backends.backend.Backend.dot
-
-Logical Operation Support
-=========================
-
-.. autosummary::
-
-   neon.backends.backend.Backend.equal
-   neon.backends.backend.Backend.not_equal
-   neon.backends.backend.Backend.greater
-   neon.backends.backend.Backend.greater_equal
-   neon.backends.backend.Backend.less
-   neon.backends.backend.Backend.less_equal
-
-Summarization Operation Support
-===============================
-.. autosummary::
-
-   neon.backends.backend.Backend.sum
-   neon.backends.backend.Backend.mean
-   neon.backends.backend.Backend.min
-   neon.backends.backend.Backend.max
-   neon.backends.backend.Backend.argmin
-   neon.backends.backend.Backend.argmax
-   neon.backends.backend.Backend.norm
-   neon.backends.backend.Backend.variance
-
-Initialization and Setup
-========================
-.. autosummary::
-
-   neon.backends.backend.Backend.rng_init
-   neon.backends.backend.Backend.err_init
-   neon.backends.backend.Backend.begin
-   neon.backends.backend.Backend.end
-
-Higher Level Operation Support
+ML Operational Layer (MOP) API
 ==============================
 
-Fully Connected Neural Network Layer
-------------------------------------
-.. autosummary::
+We expose the following API which we refer to as our Machine learning
+Operational Layer (MOP layer). This layer abstracts the backend, so the
+some operations can be performed on a CPU, GPU, or future hardware
+backends.
 
-   neon.backends.backend.Backend.fprop_fc
-   neon.backends.backend.Backend.bprop_fc
-   neon.backends.backend.Backend.update_fc
+The API consists of the two interface classes:
 
-Convolutional Neural Network Layer
-----------------------------------
-.. autosummary::
+.. csv-table::
+    :header: "Interface", "Description"
+    :widths: 20, 30
+    :delim: |
 
-   neon.backends.backend.Backend.fprop_conv
-   neon.backends.backend.Backend.bprop_conv
-   neon.backends.backend.Backend.update_conv
+    :py:class:`neon.backends.Tensor<.Tensor>`| :math:`n`-dimensional array data structure
+    :py:class:`neon.backends.Backend<.Backend>` | Backend interface used to manipulate Tensor data
 
-Pooling Neural Network Layer
-----------------------------
-.. autosummary::
+Basic Data Structure
+--------------------
 
-   neon.backends.backend.Backend.fprop_pool
-   neon.backends.backend.Backend.bprop_pool
+The :py:class:`.Tensor` class is used to represent an arbitrary dimensional array
+in which each element is stored using a consistent underlying type. For
+the CPU and GPU backends, Tensors are stored as the :py:class:`.CPUTensor` and
+:py:class:`.GPUTensor` subclasses, respectively.
 
-CrossMap Neural Network Layer
------------------------------
-.. autosummary::
+We have the ability to instantiate and copy instances of this data
+structure, as well as initialize its elements, reshape its dimensions,
+and access metadata.
 
-   neon.backends.backend.Backend.fprop_cmpool
-   neon.backends.backend.Backend.bprop_cmpool
-   neon.backends.backend.Backend.update_cmpool
-   neon.backends.backend.Backend.fprop_cmrnorm
-   neon.backends.backend.Backend.bprop_cmrnorm
+Tensor Creation
+---------------
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Backend.empty<.Backend.empty>` | Instantiate an empty Tensor
+    :py:meth:`neon.backends.Backend.array<.Backend.array>` | Instantiate a new Tensor, populating elements based on a provided array.
+    :py:meth:`neon.backends.Backend.zeros<.Backend.zeros>` | Instantiate a new Tensor, population each element with the value of 0.
+    :py:meth:`neon.backends.Backend.ones<.Backend.ones>` | Instantiate a new Tensor, population each element with the value of 1.
+    :py:meth:`neon.backends.Tensor.copy<.Tensor.copy>` | Construct and return a deep copy of the Tensor passed.
+
+Tensor Manipulation
+-------------------
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Tensor.get<.Tensor.get>` |	Convert the tensor to an in host memory numpy.ndarray.
+    :py:meth:`neon.backends.Tensor.take<.Tensor.take>` | Select a subset of elements from an array across an axis
+    :py:meth:`neon.backends.Tensor.__getitem__<.Tensor.__getitem__>` |	Extract a subset view of the items via slice style indexing along each dimension.
+    :py:meth:`neon.backends.Tensor.__setitem__<.Tensor.__setitem__>` | Assign the specified value to a subset of elements found via slice style indexing along each dimension.
+    :py:meth:`neon.backends.Tensor.fill<.Tensor.fill>` |	Assign specified value to each element of this Tensor.
+    :py:meth:`neon.backends.Tensor.transpose<.Tensor.transpose>` | Return a transposed view of the data.
+    :py:meth:`neon.backends.Tensor.reshape<.Tensor.reshape>` | Adjusts the dimensions of the data to the specified shape.
+    :py:meth:`neon.backends.Backend.take<neon.backends.Backend.take>` | Select a subset of elements (based on provided indices) from a supplied dimension
 
 
-***************
-MOP API Changes
-***************
+Arithmetic Operations
+---------------------
 
-v0.9.0
-======
+Unary and binary arithmetic operations can be performed on ``Tensor``
+objects. In all cases, the user must pre-allocate correctly sized output
+to store the result. All the below operations are performed
+element-wise.
 
-* begin and end functions now take two parameters: block and identifier.  The
-  first requires an attribute of class Block (also defined in backend.py)
-  indicating what type of computation is about to commence.  The second is a
-  unique integer identifier that indicates which iteration we are in.
+Element-wise Binary Operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* rename axes parameter to axis in summarization operations (planned)
+These element-wise binary operations perform the following operations.
+An optional ``out=`` argument can be passed to store the result as a
+Tensor. If ``out=None`` (default), an op-tree is returned.
 
-v0.8.0
-======
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
 
-* new function variance to compute the variance.
+    :py:meth:`neon.backends.Backend.add(a, b)<.Backend.add>` | :math:`a+b`
+    :py:meth:`neon.backends.Backend.subtract(a,b)<.Backend.subtract>` | :math:`a-b`
+    :py:meth:`neon.backends.Backend.multiply(a, b)<.Backend.multiply>` | :math:`a\times b`
+    :py:meth:`neon.backends.Backend.divide(a, b)<.Backend.divide>` | :math:`\frac{a}{b}`
+    :py:meth:`neon.backends.Backend.dot(a, b)<.Backend.dot>` | :math:`a \cdot b`
+    :py:meth:`neon.backends.Backend.power(a, b)<.Backend.power>` | :math:`a^b`
+    :py:meth:`neon.backends.Backend.maximum(a, b)<.Backend.maximum>`| :math:`\max(a, b)`
+    :py:meth:`neon.backends.Backend.minimum(a, b)<.Backend.minimum>` | :math:`\min(a,b)`
+    :py:meth:`neon.backends.Backend.clip(a, a_min, a_max)<.Backend.clip>` | Clips each element of :math:`a` between the corresponding elements in :math:`a_\text{min}` and :math:`a_\text{max}`
 
-v0.7.0
-======
+Element-wise Unary Functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* to support 3D convolutions:
+These element-wise operations operate on one input Tensor or Op-tree.
+Similar to the binary operations, an optional ``out=`` argument can be
+passed to store the result as a Tensor. If ``out=None`` (default), an
+op-tree is returned.
 
-  * new parameter ofmsize has been added to fprop_conv, bprop_conv,
-    update_conv, fprop_pool, bprop_pool
-  * new parameter fpsize has been added to bprop_pool
-  * new parameter ifmsize has been added to fprop_cmpool, bprop_cmpool,
-    update_cmpool
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
 
-* functions providing compiler hints:
+    :py:meth:`neon.backends.Backend.log(a)<.Backend.log>` | :math:`\log(a)`
+    :py:meth:`neon.backends.Backend.log2(a)<.Backend.log2>` | :math:`\log_2(a)`
+    :py:meth:`neon.backends.Backend.exp(a)<.Backend.exp>` | :math:`e^a`
+    :py:meth:`neon.backends.Backend.exp2(a)<.Backend.exp2>` | :math:`2^a`
+    :py:meth:`neon.backends.Backend.abs(a)<.Backend.abs>` | :math:`abs(a)`
+    :py:meth:`neon.backends.Backend.sgn(a)<.Backend.sgn>` | if :math:`x<0`, :math:`-1`; if :math:`x=0`, :math:`0`; if :math:`x>0`, :math:`1`
+    :py:meth:`neon.backends.Backend.sqrt(a)<.Backend.sqrt>` | :math:`\sqrt{a}`
+    :py:meth:`neon.backends.Backend.square(a)<.Backend.square>` | :math:`a^2`
+    :py:meth:`neon.backends.Backend.reciprocal(a)<.Backend.reciprocal>` | :math:`1/a`
+    :py:meth:`neon.backends.Backend.negative(a)<.Backend.negative>` | :math:`-a`
+    :py:meth:`neon.backends.Backend.sig(a)<.Backend.sig>` | :math:`1/(1+\exp(-a))`
+    :py:meth:`neon.backends.Backend.tanh(a)<.Backend.tanh>` | :math:`\tanh(a)`
+    :py:meth:`neon.backends.Backend.finite(a)<.Backend.finite>` | Element-wise test for finiteness (e.g. :math:`a \neq \infty`)
 
-  * new Tensor.free() function indicating Tensor no longer in use and can be
-    cleaned up
-  * new backend begin() and end() functions to indicate the start and end of
-    repeated instructions (as would be present in loops and so forth).
-  * code can be processed to inject the above hints via
-    `neon.util.compiler_hints.py`.  To remove, pass the `-s` flag to the
-    command invocation.  Alternatively from the top level of the project, one
-    can call `make insert_compiler_hints` or `make strip_compiler_hints`
+Element-wise Logical Operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* epsilon removed as a backend parameter (now associated with specific
-  functions being used)
+These methods perform element-wise logical testing on each corresponding
+element of the input :math:`a` and :math:`b`. As before, an optional ``out=`` argument can be passed to store the
+output.
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Backend.equal(a, b)<.Backend.equal>` |	:math:`a=b`
+    :py:meth:`neon.backends.Backend.not_equal(a, b)<.Backend.not_equal>` |	:math:`a\neq b`
+    :py:meth:`neon.backends.Backend.greater(a, b)<.Backend.greater>` |	:math:`a>b`
+    :py:meth:`neon.backends.Backend.greater_equal(a, b)<.Backend.greater_equal>` |	:math:`a \geq b`
+    :py:meth:`neon.backends.Backend.less(a, b)<.Backend.less>` |	:math:`a<b`
+    :py:meth:`neon.backends.Backend.less_equal(a, b)<.Backend.less_equal>` |	:math:`a\leq b`
+
+Summary Operations
+~~~~~~~~~~~~~~~~~~
+
+These operations perform a summary calculation over a single provided
+tensor ``a`` along a specified ``axis`` dimension. If ``axis=None``
+(default), the calculation is performed over all the dimensions.
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Backend.sum<.Backend.sum>` | Sums elements over the ``axis`` dimension
+    :py:meth:`neon.backends.Backend.mean<.Backend.mean>` | Computes the arithmetic mean over the ``axis`` dimension
+    :py:meth:`neon.backends.Backend.var<.Backend.var>` | Computes the variance of the elements over the ``axis`` dimension
+    :py:meth:`neon.backends.Backend.std<.Backend.std>` | Computes the standard deviation of the elements along the ``axis`` dimension
+    :py:meth:`neon.backends.Backend.min<.Backend.min>` |	Calculates the minimal element value over the ``axis`` dimension
+    :py:meth:`neon.backends.Backend.max<.Backend.max>` |	Calculates the maximal element value over the ``axis`` dimension
+    :py:meth:`neon.backends.Backend.argmin<.Backend.argmin>` | Calculates the indices of the minimal element value along the ``axis`` dimension
+    :py:meth:`neon.backends.Backend.argmax<.Backend.argmax>` | Calculates the indices of the maximal element value along the ``axis`` dimension
+
+Random Number Generator
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Both the ``NervanaGPU`` and ``NervanaCPU`` backends use the numpy random
+number generator (``np.random.RandomState``).
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Backend.gen_rng<.Backend.gen_rng>` |	Setup the numpy rng and store the initial state. Called by the backend constructor
+    :py:meth:`neon.backends.Backend.rng_get_state<.Backend.rng_get_state>` | Return the state of the rng
+    :py:meth:`neon.backends.Backend.rng_set_state<.Backend.rng_set_state>` | Set the state of the rng
+    :py:meth:`neon.backends.Backend.rng_reset<.Backend.rng_reset>` | Reset the state to the initial state
+    :py:meth:`neon.backends.NervanaGPU.rand<.nervanagpu.NervanaGPU.rand>` | Generates random numbers uniformly distributed between 0 and 1.
+
+To generate a Tensor with shape ``(100,100)``, where each element is
+uniformly distributed between 0 and 1, we can call
+
+.. code-block:: python
+
+    myTensor = be.empty((100,100))
+    myTensor[:] = be.rand()
+
+Loop indicators
+~~~~~~~~~~~~~~~
+
+These two methods signal the start (and end) of a block of repeated
+computations, such as a loop. This operation can be used to help the
+compiler optimize instruction performance, but has no direct effect on
+the underlying calculations. Each ``Backend.start()`` call must be
+book-ended by a corresponding ``Backend.end()`` call. Note that multiple
+``begin`` calls can appear adjacent in nested loops.
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Backend.begin<.Backend.begin>` | Signal the start of a block
+    :py:meth:`neon.backends.Backend.end<.Backend.end>` |	Signal the end of a block
+
+Higher-level Support
+--------------------
+
+We have taken common operations used by neural network layers and
+performed many optimizations. Many of these operations include custom
+objects (such as :py:class:`ConvLayer<.layer_cpu.ConvLayer>` or :py:class:`PoolLayer<.layer_cpu.PoolLayer>`) which are used to track
+the layer parameters and cache some calculations.
+
+Operations
+~~~~~~~~~~
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Backend.onehot<.Backend.onehot>` | Generates a one-hot representation from a set of indices (see :doc:`Loading data<loading_data>`)
+    :py:meth:`neon.backends.Backend.fill_normal<.NervanaGPU.fill_normal>` | Fills a tensor with gaussian random variables
+    :py:meth:`neon.backends.Backend.compound_dot<.Backend.compound_dot>` | Depending on the size of the input :math:`A`, :math:`B`, :math:`C`, performs :math:`\alpha A B + \beta C`
+    :py:meth:`neon.backends.NervanaGPU.make_binary_mask<.NervanaGPU.make_binary_mask>` | Creates a randomized binary mask for dropout layers
+    :py:meth:`neon.backends.NervanaCPU.make_binary_mask<.NervanaCPU.make_binary_mask>` | Creates a randomized binary mask for dropout layers
+
+Convolutional Layers
+~~~~~~~~~~~~~~~~~~~~
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Backend.conv_layer<.Backend.conv_layer>` | Creates a ``ConvLayer`` object that holds the filter parameters. This is passed to the below functions.
+    :py:meth:`neon.backends.Backend.fprop_conv<.Backend.fprop_conv>` | Forward propagate the inputs of a convolutional network layer
+    :py:meth:`neon.backends.Backend.bprop_conv<.Backend.bprop_conv>` | Backward propagate the error through a convolutional network layer.
+    :py:meth:`neon.backends.Backend.update_conv<.Backend.update_conv>` |	Compute the updated gradient for a convolutional network layer.
+    :py:meth:`neon.backends.Backend.deconv_layer<.Backend.deconv_layer>` | Creates a ``DeconvLayer`` object that holds the filter parameters. This is passed to the above functions.
+
+Pooling Layers
+~~~~~~~~~~~~~~
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Backend.pool_layer<.Backend.pool_layer>` |	Create a new ``PoolLayer`` parameter object.
+    :py:meth:`neon.backends.Backend.fprop_pool<.Backend.fprop_pool>` | Forward propagate pooling layer.
+    :py:meth:`neon.backends.Backend.bprop_pool<.Backend.bprop_pool>` | Backward propagate pooling layer.
+
+The below methods implement
+`ROI-pooling <http://arxiv.org/pdf/1504.08083.pdf>`__, where the pooling
+window sizes are themselves hyper-parameters.
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Backend.roipooling_fprop<.NervanaGPU.roipooling_fprop>` | Forward propagation through ROI-pooling layer
+    :py:meth:`neon.backends.Backend.roipooling_bprop<.NervanaGPU.roipooling_bprop>` | Backward propagation through ROI-pooling layer
+
+Local Response Normalization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Backend.lrn_layer<.NervanaGPU.lrn_layer>` | Create the `LRNLayer` parameter object
+    :py:meth:`neon.backends.Backend.fprop_lrn<.NervanaGPU.fprop_lrn>` | Forward propagation through LRN layer
+    :py:meth:`neon.backends.Backend.bprop_lrn<.NervanaGPU.bprop_lrn>` | Backward propagation through LRN layer
+
+Batch Normalization
+~~~~~~~~~~~~~~~~~~~
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Backend.compound_fprop_bn<.NervanaGPU.compound_fprop_bn>` | Forward propagation through BatchNorm layer
+    :py:meth:`neon.backends.Backend.compound_bprop_bn<.NervanaGPU.compound_bprop_bn>` | Backward propagation through BatchNorm layer
+
+
+Linear layer with bias
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. csv-table::
+    :header: "Method", "Description"
+    :widths: 20, 40
+    :delim: |
+
+    :py:meth:`neon.backends.Backend.update_fc_bias<.Backend.update_fc_bias>` | Compute the updated bias gradient for a fully connected layer
+    :py:meth:`neon.backends.Backend.add_fc_bias<.Backend.add_fc_bias>` | Add bias to a fully connected layer

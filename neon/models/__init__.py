@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------------
-# Copyright 2014 Nervana Systems Inc.
+# Copyright 2014-2016 Nervana Systems Inc.
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -12,12 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ----------------------------------------------------------------------------
-
-# import shortcuts
-from neon.models.autoencoder import Autoencoder  # noqa
-from neon.models.balance import Balance, BalanceMP  # noqa
-from neon.models.balance import BalanceMP  # noqa
-from neon.models.dbn import DBN  # noqa
-from neon.models.mlp import MLP  # noqa
-from neon.models.rbm import RBM  # noqa
-from neon.models.rnn import RNN  # noqa
+from neon.models.model import Model

@@ -1,5 +1,6 @@
 # ----------------------------------------------------------------------------
-# Copyright 2014 Nervana Systems Inc.  All rights reserved
+# Copyright 2014-2016 Nervana Systems Inc.  All rights reserved.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -13,194 +14,252 @@
 # limitations under the License.
 # ----------------------------------------------------------------------------
 # Top-level control of the building/installation/cleaning of various targets
+#
+# set empty to prevent any implicit rules from firing.
+.SUFFIXES:
 
-# these variables control the type of build, use -e to override their default
-# values, which are defined in setup.cfg
-DEV := $(strip $(shell grep -i '^ *DEV *=' setup.cfg | cut -f 2 -d '='))
-CPU := $(strip $(shell grep -i '^ *CPU *=' setup.cfg | cut -f 2 -d '='))
-GPU := $(strip $(shell grep -i '^ *GPU *=' setup.cfg | cut -f 2 -d '='))
-DIST := $(strip $(shell grep -i '^ *DIST *=' setup.cfg | cut -f 2 -d '='))
+# Choose default Python version; overrideable with "make python2" or "make python3".
+PY := $(shell python --version 2>&1  | cut -c8)
+VIRTUALENV_DIR_BASE := .venv
+STYLEVIRTUALENV_DIR_BASE := .styleenv
 
 # get release version info
 RELEASE := $(strip $(shell grep '^VERSION *=' setup.py | cut -f 2 -d '=' \
-	                   | tr -d "\'"))
+	                         | tr -d "\'"))
 
-# these variables control where we publish Sphinx docs to (additional ones
-# are assumed to be set in the environment)
+# basic check to see if any CUDA compatible GPU is installed
+# set this to false to turn off GPU related functionality
+HAS_GPU := $(shell nvcc neon/backends/util/check_gpu.c > /dev/null 2>&1 && ./a.out && rm a.out && echo true)
+
+ifdef HAS_GPU
+# Get CUDA_ROOT for LD_RUN_PATH
+export CUDA_ROOT:=$(abspath $(shell which nvcc)/../..)
+else
+# Try to find CUDA.  Kernels will still need nvcc in path
+export CUDA_ROOT:=$(firstword $(wildcard $(addprefix /usr/local/, cuda-8.0 cuda-7.5 cuda-7.0 cuda)))
+
+ifdef CUDA_ROOT
+export PATH:=$(CUDA_ROOT)/bin:$(PATH)
+HAS_GPU := $(shell $(CUDA_ROOT)/bin/nvcc neon/backends/util/check_gpu.c > /dev/null 2>&1 && ./a.out && rm a.out && echo true)
+endif
+endif
+ifdef CUDA_ROOT
+# Compiling with LD_RUN_PATH eliminates the need for LD_LIBRARY_PATH
+# when running
+export LD_RUN_PATH:=$(CUDA_ROOT)/lib64
+endif
+
+# set this to true to install visualization dependencies and functionality
+# (off by default)
+VIS :=
+
+# style checking related
+STYLE_CHECK_OPTS :=
+STYLE_CHECK_DIRS := neon bin/* tests examples
+
+# pytest options
+TEST_OPTS :=
+TEST_DIRS := tests/
+# turn off GPU tests if no GPU present
+# TODO: refactor neon/backends/tests to run under CPU
+ifneq ($(HAS_GPU), true)
+	TEST_DIRS := -k cpu -m "not hasgpu" $(TEST_DIRS)
+else
+	TEST_DIRS := -m "hasgpu or not hasgpu" $(TEST_DIRS)
+endif
+
+# this variable controls where we publish Sphinx docs to
 DOC_DIR := doc
 DOC_PUB_RELEASE_PATH := $(DOC_PUB_PATH)/$(RELEASE)
 
-# these control test options and attribute filters
-NOSE_FLAGS := ""  # --pdb --pdb-failures
-NOSE_ATTRS := -a '!slow'
+# neon compiled objects
+DATA_LOADER := loader
 
-# ensure a cuda capable GPU is installed
-ifeq ($(GPU), 1)
-  override GPU := cudanet
-endif
-ifneq ($(GPU), 0)
-  ifeq ($(shell uname -s), Darwin)
-    ifneq ($(shell kextstat | grep -i cuda > /dev/null 2>&1; echo $$?), 0)
-      $(info No CUDA capable GPU installed on OSX.  Forcing GPU=0)
-      override GPU := 0
-    endif
-  else
-    # we assume a Linux-like OS
-    ifneq ($(shell nvcc --version > /dev/null 2>&1; echo $$?), 0)
-      $(info No CUDA capable GPU installed.  Forcing GPU=0)
-      override GPU := 0
-    endif
-  endif
-endif
-
-# update options based on build type
-INSTALL_REQUIRES :=
-ifeq ($(DEV), 0)
-  NOSE_ATTRS := $(NOSE_ATTRS),'!dev'
+ifeq ($(PY), 2)
+	VIRTUALENV_EXE := virtualenv -p python2.7
+	PYLINT3K_ARGS := --disable=no-absolute-import
+	VIRTUALENV_DIR = $(VIRTUALENV_DIR_BASE)$(PY)
+	ACTIVATE = $(VIRTUALENV_DIR)/bin/activate
 else
-  INSTALL_REQUIRES := $(INSTALL_REQUIRES) 'nose>=1.3.0' 'Pillow>=2.5.0' \
-    'flake8>=2.2.2' 'pep8-naming>=0.2.2' 'sphinx>=1.2.2' \
-    'sphinxcontrib-napoleon>=0.2.8' 'scikit-learn>=0.15.2' 'matplotlib>=1.4.0' \
-    'git+https://github.com/NervanaSystems/imgworker.git\#egg=imgworker>=0.2.5'
-endif
-ifeq ($(GPU), 0)
-  NOSE_ATTRS := $(NOSE_ATTRS),'!cuda'
-else
-  ifeq ($(GPU), cudanet)
-    INSTALL_REQUIRES := $(INSTALL_REQUIRES) \
-      'git+https://github.com/NervanaSystems/cuda-convnet2.git\#egg=cudanet>=0.2.6' \
-      'pycuda>=2014.1'
-  endif
-  ifeq ($(GPU), nervanagpu)
-    INSTALL_REQUIRES := $(INSTALL_REQUIRES) \
-      'git+https://github.com/NervanaSystems/nervanagpu.git\#egg=nervanagpu>=0.3.1'
-  endif
-endif
-ifeq ($(DIST), 0)
-  NOSE_ATTRS := $(NOSE_ATTRS),'!dist'
-else
-  INSTALL_REQUIRES := $(INSTALL_REQUIRES) 'mpi4py>=1.3.1'
+	VIRTUALENV_EXE := python3 -m venv
+	PYLINT3K_ARGS :=
+	VIRTUALENV_DIR = $(VIRTUALENV_DIR_BASE)3
+	ACTIVATE = $(VIRTUALENV_DIR)/bin/activate
 endif
 
-.PHONY: default build develop install uninstall test test_all sanity speed \
-	      grad all clean_pyc clean doc html style lint bench dist publish_doc \
-	      release serialize integration
+.PHONY: default all env sysinstall sysinstall_nodeps neon_install python2 python3 \
+	    sysdeps sysuninstall clean_py clean_so \
+	    clean test coverage style lint lint3k check doc html release examples \
+	    serialize_check $(DATA_LOADER)
 
-default: build
+default: env
 
-build: clean_pyc
-	@echo "Running build(DEV=$(DEV) CPU=$(CPU) GPU=$(GPU) DIST=$(DIST))..."
-	@python setup.py neon --dev $(DEV) --cpu $(CPU) --gpu $(GPU) --dist $(DIST) \
-		build
+all:
+	$(MAKE) PY=3 TEST_OPTS='$(TEST_OPTS)' test
+	$(MAKE) PY=2 TEST_OPTS='$(TEST_OPTS)' test
 
-pip_check:
-ifeq (, $(shell which pip))
-  ifeq ($(shell uname -s), Darwin)
-		$(error pip command not found.  On OSX we recommend separately installing \
-			python 2.7.9 or later which includes pip. See \
-			https://www.python.org/downloads/)
-  else
-		$(error pip command not found.  Please ensure pip is installed. \
-			Ubuntu/Debian Linux: sudo apt-get install python-pip \
-			RedHat/CentOS Linux: sudo yum install python-pip)
-  endif
+env: $(ACTIVATE) $(DATA_LOADER)
+
+python2: VIRTUALENV_EXE := virtualenv -p python2.7
+python2: VIRTUALENV_DIR := $(VIRTUALENV_DIR_BASE)2
+python2: ACTIVATE := $(VIRTUALENV_DIR)/bin/activate
+python2: PYLINT3K_ARGS := --disable=no-absolute-import
+python2: env
+
+python3: VIRTUALENV_EXE := python3 -m venv
+python3: VIRTUALENV_DIR := $(VIRTUALENV_DIR_BASE)3
+python3: ACTIVATE := $(VIRTUALENV_DIR)/bin/activate
+python3: PYLINT3K_ARGS :=
+python3: env
+
+$(ACTIVATE): requirements.txt gpu_requirements.txt vis_requirements.txt
+	@echo "Updating virtualenv dependencies in: $(VIRTUALENV_DIR)..."
+	@test -d $(VIRTUALENV_DIR) || $(VIRTUALENV_EXE) $(VIRTUALENV_DIR)
+	@. $(ACTIVATE); pip install -U pip
+	@# cython added separately due to h5py dependency ordering bug.  See:
+	@# https://github.com/h5py/h5py/issues/535
+	@. $(ACTIVATE); pip install cython==0.23.1
+	@. $(ACTIVATE); pip install -r requirements.txt
+ifeq ($(VIS), true)
+	@echo "Updating visualization related dependecies in $(VIRTUALENV_DIR)..."
+	@. $(ACTIVATE); pip install -r vis_requirements.txt
+endif
+	@echo
+ifeq ($(HAS_GPU), true)
+	@echo "Updating GPU dependencies in $(VIRTUALENV_DIR)..."
+	@. $(ACTIVATE); pip install -r gpu_requirements.txt
+	@echo
+endif
+	@echo "Installing neon in development mode..."
+	@. $(ACTIVATE); python setup.py develop
+	@rm -f $(VIRTUALENV_DIR_BASE); ln -s $(VIRTUALENV_DIR) $(VIRTUALENV_DIR_BASE)
+	@echo "###########################################################"
+	@echo "Setup complete.  Type:"
+	@echo "    . '$(ACTIVATE)'"
+	@echo "to work interactively ($(VIRTUALENV_DIR) also symlinked to $(VIRTUALENV_DIR_BASE))"
+	@echo "###########################################################"
+	@touch $(ACTIVATE)
+	@echo
+
+$(DATA_LOADER):
+	-@cd $(DATA_LOADER) && $(MAKE) bin/loader.so HAS_GPU=$(HAS_GPU)
+
+# TODO: handle kernel/.so compilation via setup.py directly
+sysinstall_nodeps: $(DATA_LOADER) neon_install
+sysinstall: sysdeps $(DATA_LOADER) neon_install
+neon_install:
+	@echo "Installing neon system wide..."
+	@python setup.py install
+	@echo
+
+sysdeps:
+	@echo "Installing neon dependencies system wide..."
+	@# cython added separately due to h5py dependency ordering bug.  See:
+	@# https://github.com/h5py/h5py/issues/535
+	@pip install cython==0.23.1
+	@pip install -r requirements.txt
+ifeq ($(VIS), true)
+	@pip install -r vis_requirements.txt
+endif
+ifeq ($(HAS_GPU), true)
+	@pip install -r gpu_requirements.txt
 endif
 
-# unfortunately there is no way to communicate custom commands into pip
-# install, hence having to specify installation requirements twice (once
-# above, and once inside setup.py). Ugly kludge, but seems like the only way
-# to support both python setup.py install and pip install.
-# Since numpy is required for building some of the other dependent packages
-# we need to separately install it first
-deps_install: clean_pyc pip_check
-	@pip install 'numpy>=1.8.1' 'PyYAML>=3.11'
-ifdef INSTALL_REQUIRES
-	@pip install $(INSTALL_REQUIRES)
-endif
+sysuninstall:
+	@echo "Uninstalling neon system wide..."
+	@pip uninstall neon
+	@echo
 
-develop: clean_pyc pip_check deps_install .git/hooks/pre-commit
-	@echo "Running develop(DEV=$(DEV) CPU=$(CPU) GPU=$(GPU) DIST=$(DIST))..."
-	@pip install -e .
+clean_py:
+	@echo "Cleaning compiled python object files..."
+	@find . -name "*.py[co]" -type f -delete
+	@echo
 
-install: clean_pyc pip_check deps_install
-	@echo "Running install(DEV=$(DEV) CPU=$(CPU) GPU=$(GPU) DIST=$(DIST))..."
-	@pip install .
+clean_so:
+	@echo "Cleaning compiled shared object files..."
+	@cd $(DATA_LOADER) && $(MAKE) clean
+	@echo
 
-uninstall: pip_check
-	@echo "Running uninstall..."
-	@pip uninstall -y neon
+clean: clean_py clean_so
+	@echo "Removing virtual environment files..."
+	@rm -rf $(VIRTUALENV_DIR_BASE) $(VIRTUALENV_DIR_BASE)2 $(VIRTUALENV_DIR_BASE)3 $(STYLEVIRTUALENV_DIR_BASE)
+	@echo
 
-test: build
+test: env
 	@echo "Running unit tests..."
-	nosetests $(NOSE_ATTRS) $(NOSE_FLAGS) neon
+	@. $(ACTIVATE); py.test $(TEST_OPTS) $(TEST_DIRS)
+	@echo
 
-test_all:
-	@echo "Running test_all..."
-	@tox -- -e CPU=$(CPU) GPU=$(GPU) DIST=$(DIST)
+systest:
+	@echo "Running unit tests..."
+	py.test $(TEST_OPTS) $(TEST_DIRS)
+	@echo
 
-integration: build
-	@echo "Running integration checks (this may take 10-20 minutes)..."
-	@examples/run_integration_tests.sh
+benchmarks: env
+	@echo "Running all benchmarks..."
+	@. $(ACTIVATE); tests/run_benchmarks.py
+	@echo
 
-serialize: build
-	@echo "Running serialize checks..."
-	@PYTHONPATH=${PYTHONPATH}:./ python neon/tests/serialize_check.py
-    
-sanity: build
-	@echo "Running sanity checks..."
-	@PYTHONPATH=${PYTHONPATH}:./ python neon/tests/sanity_check.py \
-		--cpu $(CPU) --gpu $(GPU) --datapar $(DIST) --modelpar $(DIST)
+serialize_check: env
+	@echo "Running CPU backend test of model serialization"
+	@. $(ACTIVATE); python tests/serialization_check.py -e 10 -b cpu
+	@echo
 
-speed: build
-	@echo "Running speed checks..."
-	@PYTHONPATH=${PYTHONPATH}:./ python neon/tests/speed_check.py \
-		--cpu $(CPU) --gpu $(GPU) --datapar $(DIST) --modelpar $(DIST)
+coverage: env
+	@. $(ACTIVATE); py.test --cov=neon tests/
+	@echo
 
-grad: build
-	@echo "Running gradient checks..."
-ifeq ($(CPU), 1)
-	@echo "CPU:"
-	@PYTHONPATH=${PYTHONPATH}:./ bin/grad \
-		examples/convnet/synthetic-sanity_check.yaml
-endif
-ifneq ($(GPU), 0)
-	@echo "GPU:"
-	@PYTHONPATH=${PYTHONPATH}:./ bin/grad --gpu $(GPU) \
-		examples/convnet/synthetic-sanity_check.yaml
-endif
+style: env
+	@. $(ACTIVATE); flake8 $(STYLE_CHECK_OPTS) $(STYLE_CHECK_DIRS)
+	@. $(ACTIVATE); pylint --reports=n --py3k $(PYLINT3K_ARGS) --ignore=.venv *
+	@echo
 
-all: style test sanity grad speed
+# doesn't install everything, just runs flake8 and pylint on the code
+# using a style environment
+fast_style:
+	virtualenv .styleenv
+	. .styleenv/bin/activate; pip install `grep flake8 requirements.txt`
+	. .styleenv/bin/activate; pip install `grep pylint requirements.txt`
+	. .styleenv/bin/activate; flake8 $(STYLE_CHECK_OPTS) $(STYLE_CHECK_DIRS)
+	. .styleenv/bin/activate; pylint --reports=n --py3k $(PYLINT3K_ARGS) --ignore=.styleenv *
+	@echo
 
-clean_pyc:
-	@-find . -name '*.py[co]' -exec rm {} \;
+lint: env
+	@. $(ACTIVATE); pylint --output-format=colorized neon
+	@echo
 
-clean:
-	-python setup.py clean
+lint3k: env
+	@. $(ACTIVATE); pylint --py3k $(PYLINT3K_ARGS) --ignore=.venv *
+	@echo
 
-doc: build
+check: env
+	@echo "Running style checks.  Number of style errors is... "
+	-@. $(ACTIVATE); flake8 --count $(STYLE_CHECK_OPTS) $(STYLE_CHECK_DIRS) \
+	                 > /dev/null
+	@echo
+	@echo "Number of missing docstrings is..."
+	-@. $(ACTIVATE); pylint --disable=all --enable=missing-docstring -r n \
+	                 neon | grep "^C" | wc -l
+	@echo
+	@echo "Running unit tests..."
+	-@. $(ACTIVATE); py.test $(TEST_DIRS) | tail -1 | cut -f 2,3 -d ' '
+	@echo
+
+doc: env
+	@. $(ACTIVATE); neon --help > doc/source/neon_help_output.txt
 	$(MAKE) -C $(DOC_DIR) clean
-	$(MAKE) -C $(DOC_DIR) html
+	@. $(ACTIVATE); $(MAKE) -C $(DOC_DIR) html
+	@echo "Documentation built in $(DOC_DIR)/build/html"
+	@echo
 
 html: doc
-
-style:
-	@-flake8 --exclude=.tox,build,dist,src .
-
-.git/hooks/pre-commit:
-	@flake8 --install-hook
-	@-touch .git/hooks/pre-commit
-
-lint:
-	@-pylint --output-format=colorized neon
-
-bench: build
-	@PYTHONPATH="." benchmarks/run_benchmarks.py
-
-dist:
-	@python setup.py sdist
+	@echo "To view documents open your browser to: http://localhost:8000"
+	@cd $(DOC_DIR)/build/html; python -m SimpleHTTPServer
+	@echo
 
 publish_doc: doc
-ifneq (,$(DOC_PUB_HOST))
+ifneq (, $(DOC_PUB_HOST))
+	@echo "relpath: $(DOC_PUB_RELEASE_PATH)"
 	@-cd $(DOC_DIR)/build/html && \
 		rsync -avz -essh --perms --chmod=ugo+rX . \
 		$(DOC_PUB_USER)@$(DOC_PUB_HOST):$(DOC_PUB_RELEASE_PATH)
@@ -211,5 +270,16 @@ else
 	@echo "Can't publish.  Ensure DOC_PUB_HOST, DOC_PUB_USER, DOC_PUB_PATH set"
 endif
 
-release: publish_doc
-	@gitchangelog > ChangeLog
+dist: env
+	@echo "Prepping distribution..."
+	@python setup.py sdist
+
+release: check dist
+	@echo "Bump version number in setup.py"
+	@vi setup.py
+	@echo "Update ChangeLog"
+	@vi ChangeLog
+	@echo "TODO: commit changes"
+	@echo "TODO: publish release to PYPI"
+	@echo "TODO (manual script): publish documentation"
+	@echo

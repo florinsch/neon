@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------------
-# Copyright 2014 Nervana Systems Inc.
+# Copyright 2014-2016 Nervana Systems Inc.
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -12,18 +12,59 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ----------------------------------------------------------------------------
-"""
-Utility functions for saving various types of objects state.
-"""
-
+import importlib
 import logging
 import os
-import yaml
+import pkgutil
+import sys
+import appdirs
 
-from neon.util.compat import pickle
-
+from neon.util.compat import pickle, pickle_load
 
 logger = logging.getLogger(__name__)
+
+
+def get_cache_dir(subdir=None):
+    """
+    Function for getting cache directory to store reused files like kernels, or scratch space
+    for autotuning, etc.
+    """
+    cache_dir = os.environ.get("NEON_CACHE_DIR")
+
+    if cache_dir is None:
+        cache_dir = appdirs.user_cache_dir("neon", "neon")
+
+    if subdir:
+        subdir = subdir if isinstance(subdir, list) else [subdir]
+        cache_dir = os.path.join(cache_dir, *subdir)
+
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir)
+
+    return cache_dir
+
+
+def get_data_cache_dir(data_dir, subdir=None):
+    """
+    Function for getting cache directory to store data cache files.
+
+    Since the data cache contains large files, it is ideal to control the
+    location independently from the system cache, which defaults to
+    the user homedir if not otherwise specified.
+    """
+    data_cache_dir = os.environ.get("NEON_DATA_CACHE_DIR")
+
+    if data_cache_dir is None:
+        data_cache_dir = data_dir
+
+    if subdir:
+        subdir = subdir if isinstance(subdir, list) else [subdir]
+        data_cache_dir = os.path.join(data_cache_dir, *subdir)
+
+    if not os.path.exists(data_cache_dir):
+        os.makedirs(data_cache_dir)
+
+    return data_cache_dir
 
 
 def ensure_dirs_exist(path):
@@ -44,164 +85,7 @@ def ensure_dirs_exist(path):
     return path
 
 
-def convert_scalar_node(val):
-    """
-    Helper to extract and return the appropriately types value of a ScalarNode
-    object.
-
-    Arguments:
-        val: (yaml.nodes.ScalarNode): object to extract value from
-
-    Returns:
-        float, int, string: the actual value
-    """
-    if not isinstance(val, yaml.nodes.ScalarNode):
-        return val
-    if val.tag.endswith("int"):
-        return int(val.value)
-    elif val.tag.endswith("float"):
-        return float(val.value)
-    else:
-        # assume a string
-        return val.value
-
-
-def extract_child_node_vals(node, keys):
-    """
-    Helper to iterate through the immediate children of the yaml node object
-    passed, looking for the key values specified.
-
-    Arguments:
-        node (yaml.nodes.Node): the parent node upon which to begin the search
-        keys (list): set of strings indicating the child keys we want to
-                     extract corresponding values for.
-
-    Returns:
-        dict: with one item for each key.  value is value found in search for
-              that key, or None if not found.
-    """
-    res = dict()
-    for child in node.value:
-        # child node values are two element tuples, where the first is a scalar
-        # node, and the second can be other types of nodes.
-        tag = child[0].value
-        if isinstance(child[1], yaml.nodes.ScalarNode):
-            val = convert_scalar_node(child[1])
-        elif isinstance(child[1], yaml.nodes.SequenceNode):
-            val = [convert_scalar_node(x) for x in child[1].value]
-        elif isinstance(child[1], yaml.nodes.MappingNode):
-            val = dict()
-            for item in child[1].value:
-                val[item[0].value] = convert_scalar_node(item[1])
-        else:
-            logger.warning("unknown node type: %s, ignoring tag %s",
-                           str(type(child[1])), tag)
-            val = None
-        for key in keys:
-            if tag == key:
-                res[key] = val
-    for key in keys:
-        if key not in res:
-            res[key] = None
-    return res
-
-
-def obj_multi_constructor(loader, tag_suffix, node):
-    """
-    Utility function used to actually import and generate a new class instance
-    from its name and parameters
-
-    Arguments:
-        loader (yaml.loader.SafeLoader): carries out actual loading
-        tag_suffix (str): The latter portion of the tag, representing the full
-                          module and class name of the object being
-                          instantiated.
-        node (yaml.MappingNode): tag/value set specifying the parameters
-                                 required for constructing new objects of this
-                                 type
-    """
-    # extract class name and import neccessary module.
-    parts = tag_suffix.split('.')
-    module = '.'.join(parts[:-1])
-    try:
-        cls = __import__(module)
-    except ImportError as err:
-        # we allow a shortcut syntax that skips neon. from import path, try
-        # again with this prepended
-        if parts[0] != "neon":
-            parts.insert(0, "neon")
-            module = '.'.join(parts[:-1])
-            cls = __import__(module)
-            if 'datasets' in parts:
-                # clear any previous datasets loaded with a different backend
-                cls.datasets.dataset.Dataset.inputs = {
-                    'train': None, 'test': None, 'validation': None}
-                cls.datasets.dataset.Dataset.targets = {
-                    'train': None, 'test': None, 'validation': None}
-        else:
-            raise err
-    for comp in parts[1:]:
-        cls = getattr(cls, comp)
-
-    # need to create a new object
-    try:
-        res = cls(**loader.construct_mapping(node, deep=True))
-    except TypeError as e:
-        logger.warning("Unable to construct '%s' instance.  Error: %s",
-                       cls.__name__, e.message)
-        res = None
-    return res
-
-
-def initialize_yaml():
-    yaml.add_multi_constructor('!obj:', obj_multi_constructor,
-                               yaml.loader.SafeLoader)
-
-
-def deserialize(load_path, verbose=True):
-    """
-    Converts a serialized object into a python data structure.  We currently
-    support reading from the following file formats (expected filename
-    extension in brackets):
-
-        * python pickle (.pkl)
-        * YAML (.yaml)
-
-    Arguments:
-        load_path (str, File): path and name of the serialized on-disk file to
-                               load (or an already loaded file object).
-                               The type to write is inferred based on filename
-                               extension.  If no extension given, pickle format
-                               is attempted.
-
-    Returns:
-        object: Converted in-memory python data structure.
-
-    See Also:
-        serialize
-    """
-    if not isinstance(load_path, file):
-        load_path = file(os.path.expandvars(os.path.expanduser(load_path)))
-    fname = load_path.name
-
-    if verbose:
-        logger.warn("deserializing object from:  %s", fname)
-
-    if (fname.lower().endswith('.yaml') or fname.lower().endswith('.yml')):
-        initialize_yaml()
-        return yaml.safe_load(load_path)
-    else:
-        try:
-            return pickle.load(load_path)
-        except AttributeError:
-            msg = ("Problems deserializing: %s.  Its possible the interface "
-                   "for this object has changed since being serialized.  You "
-                   "may need to remove and recreate it." % load_path)
-            logger.error(msg)
-            raise AttributeError(msg)
-
-
-def serialize(obj, save_path, verbose=True):
+def save_obj(obj, save_path):
     """
     Dumps a python data structure to a saved on-disk representation.  We
     currently support writing to the following file formats (expected filename
@@ -215,23 +99,101 @@ def serialize(obj, save_path, verbose=True):
                          file name)
 
     See Also:
-        deserialize
+        :py:func:`~neon.models.model.Model.serialize`
     """
     if save_path is None or len(save_path) == 0:
         return
     save_path = os.path.expandvars(os.path.expanduser(save_path))
-    if verbose:
-        logger.warn("serializing object to: %s", save_path)
+    logger.debug("serializing object to: %s", save_path)
     ensure_dirs_exist(save_path)
 
-    pickle.dump(obj, open(save_path, 'wb'), -1)
+    pickle.dump(obj, open(save_path, 'wb'), 2)
 
 
-class YAMLable(yaml.YAMLObject):
+def load_obj(load_path):
+    """
+    Loads a saved on-disk representation to a python data structure. We
+    currently support the following file formats:
+
+        * python pickle (.pkl)
+
+    Arguments:
+        load_path (str): where to the load the serialized object (full path
+                            and file name)
 
     """
-    Base class for any objects we'd like to be able to safely parse from yaml
-    configuration strems (or dump suitable representation back out to such a
-    stream).
+    if isinstance(load_path, str):
+        load_path = os.path.expandvars(os.path.expanduser(load_path))
+        if load_path.endswith('.gz'):
+            import gzip
+            load_path = gzip.open(load_path, 'rb')
+        else:
+            load_path = open(load_path, 'rb')
+    fname = load_path.name
+
+    logger.debug("deserializing object from:  %s", fname)
+    try:
+        return pickle_load(load_path)
+    except AttributeError:
+        msg = ("Problems deserializing: %s.  Its possible the interface "
+               "for this object has changed since being serialized.  You "
+               "may need to remove and recreate it." % load_path)
+        logger.error(msg)
+        raise AttributeError(msg)
+
+
+def load_class(ctype):
     """
-    yaml_loader = yaml.SafeLoader
+    Helper function to take a string with the neon module and
+    classname then import and return  the class object
+
+    Arguments:
+        ctype (str): string with the neon module and class
+                     (e.g. 'neon.layers.layer.Linear')
+    Returns:
+        class
+    """
+    # extract class name and import neccessary module.
+    class_path = ctype
+    parts = class_path.split('.')
+    module = '.'.join(parts[:-1])
+    try:
+        clss = __import__(module)
+        for comp in parts[1:]:
+            clss = getattr(clss, comp)
+        return clss
+    except (ValueError, ImportError) as err:
+        if len(module) == 0:
+            # try to find the module inside neon
+            pkg = sys.modules['neon']
+            prfx = pkg.__name__ + '.'
+            for imptr, nm, _ in pkgutil.iter_modules(pkg.__path__, prefix=prfx):
+                mod = importlib.import_module(nm)
+                if hasattr(mod, ctype):
+                    return getattr(mod, ctype)
+        raise err
+
+
+def serialize(model, callbacks=None, datasets=None, dump_weights=True, keep_states=True):
+    """
+    Serialize the model, callbacks and datasets.
+
+    Arguments:
+        model (Model): Model object
+        callbacks (Callbacks, optional): Callbacks
+        datasets (iterable, optional): Datasets
+        dump_weights (bool, optional): Ignored
+        keep_states (bool, optional): Whether to save optimizer states too.
+
+    Returns:
+        dict: Model data, callbacks and datasets
+
+    """
+    pdict = model.serialize(fn=None, keep_states=keep_states)
+    if callbacks is not None:
+        pdict['callbacks'] = callbacks.serialize()
+
+    if datasets is not None:
+        pdict['datasets'] = datasets.serialize()
+
+    return pdict

@@ -1,5 +1,5 @@
 .. ---------------------------------------------------------------------------
-.. Copyright 2014 Nervana Systems Inc.
+.. Copyright 2015 Nervana Systems Inc.
 .. Licensed under the Apache License, Version 2.0 (the "License");
 .. you may not use this file except in compliance with the License.
 .. You may obtain a copy of the License at
@@ -11,265 +11,188 @@
 .. WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 .. See the License for the specific language governing permissions and
 .. limitations under the License.
-.. ---------------------------------------------------------------------------
+..  ---------------------------------------------------------------------------
 
 Installation
-============
+===============
 
-Overview
---------
+Let's get you started using Neon to build deep learning models!
+
+Requirements
+~~~~~~~~~~~~
+
+Neon runs on **Python 2.7** or **Python 3.4+** and we support Linux and Mac OS X machines.
+Before install, please ensure you have recent versions of the following
+packages (different system names shown):
+
+.. csv-table::
+   :header: "Ubuntu", "OSX", "Description"
+   :widths: 20, 20, 40
+   :escape: ~
+
+   python-pip, pip, Tool to install python dependencies
+   python-virtualenv (*), virtualenv (*), Allows creation of isolated environments ((*): This is required only for Python 2.7 installs. With Python3: test for presence of ``venv`` with ``python3 -m venv -h``)
+   libhdf5-dev, h5py, Enables loading of hdf5 formats
+   libyaml-dev, pyaml, Parses YAML format inputs
+   pkg-config, pkg-config, Retrieves information about installed libraries
+
+.. note::
+   To enable neon's :py:class:`.DataLoader`, several optional libraries should be installed. For image processing, install `OpenCV <http://opencv.org/>`__. For audio and video data, install `ffmpeg <https://ffmpeg.org/>`__. We recommend installing with a package manager (e.g. apt-get or homebrew). 
+
+
+Additionally, there are several other optional libraries.
+
+* To enable multi-threading operations on a CPU, install `OpenBLAS <http://www.openblas.net/>`__, then recompile numpy with links to openBLAS (see sample instructions `here <https://hunseblog.wordpress.com/2014/09/15/installing-numpy-and-openblas/>`_). While Neon will run on the CPU, you'll get far better performance using GPUs.
+* Enabling Neon to use GPUs requires installation of `CUDA SDK and drivers <https://developer.nvidia.com/cuda-downloads>`__. We support `Pascal <http://developer.nvidia.com/pascal>`__ ,  `Maxwell <http://maxwell.nvidia.com/>`__ and `Kepler <http://www.nvidia.com/object/nvidia-kepler.html>`__ GPU architectures, but our backend is optimized for Maxwell GPUs. Remember to add the CUDA path to your environment variables.
+
+For GPU users, remember to add the CUDA path. For example, on Ubuntu:
 
 .. code-block:: bash
 
-    # get the latest source
+    export PATH="/usr/local/cuda/bin:"$PATH
+    export LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/lib:/usr/local/lib:"$LD_LIBRARY_PATH
+
+Or on Mac OS X:
+
+.. code-block:: bash
+
+    export PATH="/usr/local/cuda/bin:"$PATH
+    export DYLD_LIBRARY_PATH="/usr/local/cuda/lib:"$DYLD_LIBRARY_PATH
+
+Installation
+~~~~~~~~~~~~
+
+We recommend installing Neon within a `virtual
+environment <http://docs.python-guide.org/en/latest/dev/virtualenvs/>`__
+to ensure a self-contained environment. To install neon within an
+already existing virtual environment, see the System-wide Install section.
+If you use the `Anaconda <http://docs.continuum.io/anaconda/index>`__ python
+distribution, please see the Anaconda Install section. Otherwise, to
+setup neon in this manner, run the following commands:
+
+.. code-block:: bash
+
     git clone https://github.com/NervanaSystems/neon.git
-    cd neon
+    cd neon; make
 
-    # configure optional backends like GPU, distributed processing by editing
-    # setup.cfg with a text editor.
-    nano setup.cfg
-
-    # to install system wide (we recommend first setting up a virtualenv):
-    make install  # sudo make install on Linux
-
-    # or to build for working locally in the source tree
-    # (useful for active development)
-    make develop  # sudo make develop on Linux
-    # or
-    make build  # will require updating PYTHONPATH to point at neon dir
-
-
-Required Dependencies
----------------------
-
-We expect a system with python 2.7 at minimum.  Any dependent python package
-will be automatically installed as part of the ``make install`` call.
-
-* `python <https://www.python.org/>`_  (2.7 and 3.4 are supported)
-* `numpy <http://www.numpy.org/>`_ for CPU backend and on-host dataset storage
-* `pyyaml <http://pyyaml.org/>`_ for configuration file parsing
-
-
-Optional Dependencies
----------------------
-
-Though not strictly required to run some basic examples, these dependencies
-can be installed to unlock faster backends, simplified image dataset
-handling, and tools necessary for doing neon development.
-
-These dependencies can be installed by editing the appropriate parameters
-defined in `Configuration Setup`_ (spelled out as subsection titles below):
-
-GPU=nervanagpu
-^^^^^^^^^^^^^^
-
-* `nervanagpu <http://github.com/NervanaSystems/nervanagpu/>`_ our in-house
-  developed fp16/fp32 Maxwell GPU backend.  To take advantage of this you'll
-  need a CUDA capable Maxwell graphics card with CUDA drivers and
-  `SDK <https://developer.nvidia.com/cuda-downloads>`_ installed.
-* `pycuda <http://mathema.tician.de/software/pycuda/>`_ Required for the
-  nervanagpu backend
-* `maxas <https://github.com/NervanaSystems/maxas/>`_ Assembler for NVIDIA
-  Maxwell architecture.  Required for installing the nervanagpu backend.
-
-GPU=cudanet
-^^^^^^^^^^^
-
-* `Nervana's cuda-convnet2 <http://github.com/NervanaSystems/cuda-convnet2/>`_
-  our updated fork of Alex Krizhevsky's
-  `cuda-convnet2 <https://code.google.com/p/cuda-convnet2/>`_ that powers our
-  cudanet GPU backend.  To use this you'll need a CUDA capable graphics card
-  with CUDA drivers and SDK installed.
-
-DEV=1
-^^^^^
-
-* `imgworker <https://github.com/NervanaSystems/imgworker/>`_ our in-house
-  developed multithreaded image decoder.  Required for
-  `neon.datasets.imageset.Imageset` based datasets.  Note that this requires
-  that the `boost C++ libraries <http://www.boost.org/>`_ first be installed in
-  a typical directory.
-* `Pillow <http://pillow.readthedocs.org/index.html/>`_ PIL fork required for
-  batch writer and doing initial processing for the Imagenet dataset.
-* `nose <https://nose.readthedocs.org/en/latest/>`_ for running unit tests as
-  part of the ``make test`` target
-* `sphinx <http://sphinx-doc.org/>`_ for generating the documentation as part
-  of the ``make doc`` target
-* sphinxcontrib-napoleon for google style autodoc parsing
-* `flake8 <https://flake8.readthedocs.org/>`_ for code style conformance as
-  part of the ``make style`` target
-* `pep8-naming <https://pypi.python.org/pypi/pep8-naming>`_ plugin for variable
-  name checking
-* `matplotlib <http://matplotlib.org>`_ Currently used for some basic
-  visualizations like RNN features.
-
-DIST=1
-^^^^^^
-
-* `mpi4py <https://github.com/mpi4py/mpi4py>`_ for creation of distributed
-  Tensors in data and model parallel models.
-* `openmpi <http://www.open-mpi.org/>`_ required for mpi4py
-
-
-Configuration Setup
--------------------
-
-Initial build type and required dependency handling can be controlled either by
-editing the ``setup.cfg`` file prior to installation, or by passing arguments
-to the ``make`` command.  Below is an example showing the default values for
-``setup.cfg``:
-
-.. highlight:: ini
-
-.. literalinclude:: ../../setup.cfg
-   :linenos:
-
-As shown, the default set of options is fairly restrictive, so only the CPU
-based backend will be available:
-
-* Set ``GPU=nervanagpu`` (maxwell) or ``GPU=cudanet`` (kepler), if you have a CUDA capable GPU
-* Set ``DEV=1``, if you plan to run unit tests, build documentation or develop neon 
-* Set ``DIST=1``, if you would like to run your model training in parallel via MPI
-
-To override what is defined in ``setup.cfg``, one can pass the appropriate
-options on the command-line (useful when doing in-place development).  Here's
-an example:
+This will install the files in the ``neon/.venv/`` directory and will use the python version in the
+default PATH.  To instead force a Python2 or Python3 install, supply this as an optional parameter:
 
 .. code-block:: bash
 
-    make -e GPU=cudanet DEV=1 test
+   make python2
 
-
-.. _mpi_install:
-
-Installing MPI on an Ubuntu cluster (for distributed models)
-------------------------------------------------------------
-neon provides distributed implementations of convnets and MLPs in addition to the non-distributed implementations.
-It has been tested with
-`OpenMPI 1.8.1 <http://www.open-mpi.org/software/ompi/v1.8/>`_ and
-`mpi4py <https://github.com/mpi4py/mpi4py>`_.
-
-1. Install OpenMPI:
+Or:
 
 .. code-block:: bash
 
-    cd <openmpi_source_dir>
-    ./configure --prefix=/<path_to_install_openmpi> --with-cuda
-    make all
-    sudo make install
+   make python3
 
-Make sure that ``PATH`` includes ``/<path_to_openmpi>/bin`` and
-``LD_LIBRARY_PATH`` includes ``/<path_to_openmpi>/lib``
-
-2. Install mpi4py:
-
-.. code-block:: bash
-
-  # set DIST=1 in setup.cfg then run:
-  make install
-  # or
-  make -e DIST=1 install
-  # or
-  cd <mpi4py_source_dir>
-	sudo python setup.py build --configure install
-
-3. Setup ``/etc/hosts`` with IPs of the nodes.
-e.g.:
-
-.. code-block:: bash
-
-	192.168.1.1 host1
-	192.168.1.2 host2
-
-4. Setup a hosts file to use with MPI ``-hostfile`` option.
-For additional info refer to `this document <http://cs.calvin.edu/curriculum/cs/374/homework/MPI/01/multicoreHostFiles.html>`_.
-e.g.:
-
-.. code-block:: bash
-
-	host1 slots=2
-	host2 slots=2
-
-5. Read through the :doc:`distributed` section to see how run neon in data or
-   model parallel mode using MPI.
-
-
-Virtualenv
-----------
-If you are doing work on a multi-user system, don't have sudo access, or just
-want to have an isolated installation, using a
-`virtualenv <https://packaging.python.org/en/latest/installing.html#creating-virtual-environments>`_
-is highly recommended.
-
-Setting up a virtual environment requires creation of directory to which you
-can write. This will end up housing a copy of python, it's packaging tools,
-and any python libraries you install.  In the example below we call this
-directory `.venv`
-
-.. code-block:: bash
-
-    # if on python 2.7:
-    virtualenv .venv
-    # if on python3:
-    pyvenv .venv
-
-Now that you've setup a virtual environment, you need to "activate" it so that
-any subsequent python or pip related commands will utilize it.
+To activate the virtual environment, type
 
 .. code-block:: bash
 
     . .venv/bin/activate
 
-The above changes your python and pip executables to point inside the `.venv`
-directory. Any packages installed will be in there and you can use python, pip
-as normal. You’ll also see that your prompt changes to (.venv) to indicate
-this.
+You will see the prompt change to reflect the activated environment. To
+start Neon and run the MNIST multi-layer perceptron example (the "Hello
+World" of deep learning), enter
 
-When finished using the virtualenv you need to "deactivate" it to get back to
-using the standard python paths and tools.  To do this simply issue:
+.. code-block:: bash
+
+    examples/mnist_mlp.py
+
+When you are finished, remember to deactivate the environment
 
 .. code-block:: bash
 
     deactivate
 
-You can always reactivate your virtualenv again at a later time, via
-`.  .venv/bin/activate`.  If you want to completely remove the virtualenv just
-delete the `.venv` directory.
+Congratulations, you have installed neon! Next, we recommend you learn
+how to run models in neon and walk through the MNIST multilayer
+perceptron tutorial.
 
 
-Docker Images
--------------
-If you'd prefer to have a containerized installation of neon and its
+Virtual Environment
+~~~~~~~~~~~~~~~~~~~
+
+``Virtualenv`` is a python tool that keeps the dependencies and packages
+required for different projects in separate environments. By default,
+our install creates a copy of python executable files in the
+``neon/.venv`` directory. To learn more about virtual environments, see
+the guide at http://docs.python-guide.org/en/latest/dev/virtualenvs/.
+
+System-wide install
+~~~~~~~~~~~~~~~~~~~
+
+If you would prefer not to use a new virtual environment, Neon can be
+installed system-wide with
+
+.. code-block:: bash
+
+    git clone https://github.com/NervanaSystems/neon.git
+    cd neon && make sysinstall
+
+To install neon in a previously existing virtual environment, first activate
+that environment, then run ``make sysinstall``. Neon will install the
+dependencies in your virtual environment's python folder.
+
+Anaconda install
+~~~~~~~~~~~~~~~~
+
+If you have already installed and configured the Anaconda distribution
+of python, follow the subsequent steps.
+
+First, configure and activate a new conda environment for neon:
+
+.. code-block:: bash
+
+    conda create --name neon pip
+    source activate neon
+
+Now clone and run a system-wide install. Since the install takes place
+inside a conda environment, the dependencies will be installed in your
+environment folder.
+
+.. code-block:: bash
+
+    git clone https://github.com/NervanaSystems/neon.git
+    cd neon && make sysinstall
+
+When complete, deactivate the environment:
+
+.. code-block:: bash
+
+    source deactivate
+
+Docker
+~~~~~~
+
+If you would prefer having a containerized installation of neon and its
 dependencies, the open source community has contributed the following
-`docker <http://www.docker.com/>`__ images (note that these are not
-supported/maintained by Nervana):
+Docker images (note that these are not supported/maintained by Nervana):
 
-- `base (CPU-only) <https://registry.hub.docker.com/u/kaixhin/neon/>`__
-- `nervanagpu backend <https://registry.hub.docker.com/u/kaixhin/nervanagpu-neon/>`__
-- `cudanet backend <https://registry.hub.docker.com/u/kaixhin/cudanet-neon/>`__
+-  `neon (CPU only) <https://hub.docker.com/r/kaixhin/neon/>`__
+-  `neon (GPU) <https://hub.docker.com/r/kaixhin/cuda-neon/>`__
 
+Support
+~~~~~~~
 
-Upgrading
----------
+For any bugs or feature requests please:
 
-Assuming we've prepared a new release and you still have the cloned git
-repository, you can issue:
-
-.. code-block:: bash
-
-    # get into the directory where you downloaded the neon repository
-    cd neon
-
-    # pull down source code changes
-    git pull origin master
-
-    # install as before (may need to first edit setup.cfg)
-    sudo make install
-
-
-Uninstalling
-------------
-
-.. code-block:: bash
-
-    sudo pip uninstall neon
+1. Search the open and closed
+   `issues <https://github.com/NervanaSystems/neon/issues>`__ list to
+   see if we’re already working on what you have uncovered.
+2. Check that your issue/request isn't answered in our `Frequently Asked
+   Questions (FAQ) <http://neon.nervanasys.com/docs/latest/faq.html>`__
+   or
+   `neon-users <https://groups.google.com/forum/#!forum/neon-users>`__
+   Google group.
+3. File a new `issue <https://github.com/NervanaSystems/neon/issues>`__
+   or submit a new
+   `pull <https://github.com/NervanaSystems/neon/pulls>`__ request if
+   you have some code to contribute. See our `contributing
+   guide <https://github.com/NervanaSystems/neon/blob/master/CONTRIBUTING.rst>`__.
+4. For other questions and discussions please post a message to the
+   `neon-users <https://groups.google.com/forum/#!forum/neon-users>`__
+   Google group.
